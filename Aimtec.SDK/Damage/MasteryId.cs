@@ -46,7 +46,7 @@
         {
             Wanderer = 65,
 
-            Savagery = 66,
+            Savagery = 43,
 
             RunicAffinity = 81,
 

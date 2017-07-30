@@ -79,6 +79,7 @@ namespace Aimtec.SDK.Damage
         public static double GetAutoAttackDamage(this Obj_AI_Base source, Obj_AI_Base target)
         {
             var dmgPhysical = (double) source.TotalAttackDamage;
+
             var dmgMagical = 0d;
             var dmgReduce = 1d;
 
@@ -94,12 +95,14 @@ namespace Aimtec.SDK.Damage
                 dmgPhysical *= passiveDamage.PhysicalDamagePercent;
                 dmgMagical *= passiveDamage.MagicalDamagePercent;
 
+
                 var ardentCenserBuff = hero.GetBuff("ARDENTCENSER"); // TODO: Add real buffname.
                 var ardentCenserBuffCaster = (Obj_AI_Hero)ardentCenserBuff?.Caster;
                 if (ardentCenserBuffCaster != null)
                 {
                     dmgMagical += 19.12 + 0.88 * ardentCenserBuffCaster.Level;
                 }
+
 
                 if (target.GetBuffCount("braummarkcounter") == 3)
                 {
@@ -119,12 +122,14 @@ namespace Aimtec.SDK.Damage
                         dmgPhysical += 5;
                     }
 
+
                     if (!hero.IsMelee &&
                         target.Team == GameObjectTeam.Neutral &&
                         Regex.IsMatch(target.Name, "SRU_RiftHerald"))
                     {
                         dmgReduce *= 0.65;
                     }
+
                 }
             }
 
@@ -151,6 +156,7 @@ namespace Aimtec.SDK.Damage
                 }
             }
 
+
             var itemDamage = DamageItems.ComputeItemDamages(source, target);
             dmgPhysical += itemDamage.PhysicalDamage;
             dmgMagical += itemDamage.MagicalDamage;
@@ -168,7 +174,14 @@ namespace Aimtec.SDK.Damage
                     break;
             }
 
-            return Math.Max(Math.Floor(dmgPhysical + dmgMagical) * dmgReduce + source.GetPassiveFlatMod(target) - 5, 0);
+
+            var totalDamage = Math.Floor(dmgPhysical + dmgMagical);
+
+            var reduced = totalDamage * dmgReduce;
+
+            var final = Math.Max(totalDamage + source.GetPassiveFlatMod(target), 0);
+
+            return final;
         }
 
         /// <summary>
@@ -422,7 +435,7 @@ namespace Aimtec.SDK.Damage
             }
 
             double armorPenetrationPercent = source.PercentArmorPenetration;
-            double armorPenetrationFlat = source.PhysicalLethality * (0.6 + 0.4 * target.Level / 18);
+            double armorPenetrationFlat = source.PhysicalLethality * (0.6 + 0.4 * source.Level / 18);
             double bonusArmorPenetrationMod = source.PercentBonusArmorPenetration;
 
             switch (source.Type)

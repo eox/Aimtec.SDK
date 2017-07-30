@@ -86,9 +86,6 @@ namespace Aimtec.SDK.Orbwalking
         /// </summary>
         private AttackableUnit ForcedTarget { get; set; }
 
-        // TODO this completely breaks the modular design, Orbwalker and health prediction shouldnt be tightly coupled!
-        private HealthPredictionImplB HealthPred { get; set;  } 
-
         //Menu Getters
         private int HoldPositionRadius => this.Config["Misc"]["holdPositionRadius"].Value;
 
@@ -420,6 +417,7 @@ namespace Aimtec.SDK.Orbwalking
         bool CanKillMinion(Obj_AI_Base minion, int time = 0)
         {
             var rtime = time == 0 ? this.TimeForAutoToReachTarget(minion) : time;
+
             var pred = this.GetPredictedHealth(minion, rtime);
 
             //The minions health will already be 0 by the time our auto attack reaches it, so no point attacking it...
@@ -458,73 +456,6 @@ namespace Aimtec.SDK.Orbwalking
             IEnumerable<Obj_AI_Base> minions = attackableUnits
                 .Where(x => x is Obj_AI_Base).Cast<Obj_AI_Base>().OrderByDescending(x => x.MaxHealth);
 
-            var minionTurretAggro = minions.FirstOrDefault(x => this.HealthPred.HasTurretAggro(x));
-
-            if (minionTurretAggro != null)
-            {
-                var data = this.HealthPred.GetAggroData(minionTurretAggro);
-
-                var timeToReach = this.TimeForAutoToReachTarget(minionTurretAggro) + 50;
-
-                var predHealth1Auto = this.HealthPred.GetPredictedDamage(minionTurretAggro, timeToReach);
-
-                var dmgauto = Player.GetAutoAttackDamage(minionTurretAggro);
-
-                var turretDmg = data.LastTurretAttack.Sender.GetAutoAttackDamage(minionTurretAggro);
-
-                //If it won't be dead already...
-                if (predHealth1Auto > 0)
-                {
-                    if (Game.TickCount + timeToReach > Game.TickCount + data.LastTurretAttack.ETA)
-                    {
-                        if (dmgauto >= predHealth1Auto)
-                        {
-                            return minionTurretAggro;
-                        }
-                    }
-
-                    //Our auto can reach sooner than the turret auto
-                    else
-                    {
-                        if (Math.Ceiling(dmgauto - minionTurretAggro.Health) <= 0 || dmgauto > predHealth1Auto)
-                        {
-                            return minionTurretAggro;
-                        }
-                    }
-                }
-
-                var afterAutoHealth = predHealth1Auto - dmgauto;
-                var afterTurretHealth = predHealth1Auto - turretDmg;
-
-                if (afterAutoHealth > 0 && turretDmg >= afterAutoHealth)
-                {
-                    return null;
-                }
-
-                var numautos =
-                    this.NumberOfAutoAttacksInTime(Player, minionTurretAggro, data.TimeUntilNextTurretAttack);
-
-                var tdmg = dmgauto * numautos;
-
-                var hNextTurretShot =
-                    this.HealthPred.GetPredictedDamage(minionTurretAggro, data.TimeUntilNextTurretAttack - 100);
-
-                if (tdmg >= minionTurretAggro.Health)
-                {
-                    return minionTurretAggro;
-                }
-
-                //Killable
-                AttackableUnit killableMinion0 = minions.FirstOrDefault(x => this.CanKillMinion(x));
-
-                if (killableMinion0 != null)
-                {
-                    return killableMinion0;
-                }
-
-                return null;
-            }
-
             //Killable
             AttackableUnit killableMinion = minions.FirstOrDefault(x => this.CanKillMinion(x));
 
@@ -534,6 +465,7 @@ namespace Aimtec.SDK.Orbwalking
             }
 
             var waitableMinion = minions.Any(this.ShouldWaitMinion);
+
             if (waitableMinion)
             {
                 return null;
@@ -553,21 +485,15 @@ namespace Aimtec.SDK.Orbwalking
 
                 var dmg = Player.GetAutoAttackDamage(minion);
 
-                var data = this.HealthPred.GetAggroData(minion);
+                var dist = Player.Distance(minion);
 
-                //if our damage is enough to kill it
-                if (dmg >= predHealth)
-                {
-                    return minion;
-                }
+                var time = this.AttackCoolDownTime + this.AnimationTime + (dist / Player.BasicAttack.MissileSpeed) * 1000;
 
-                if (data != null)
+                var lcpred = HealthPrediction.Implementation.GetLaneClearHealthPrediction(minion, (int) time * 2);
+
+                if (lcpred < dmg)
                 {
-                    if (predHealth > dmg && predHealth < dmg * 1.5 && data.TimeElapsedSinceLastMinionAttack < 1300)
-                    {
-                        Player.IssueOrder(OrderType.Stop, Player.Position);
-                        return null;
-                    }
+                    continue;
                 }
 
                 return minion;
@@ -599,7 +525,7 @@ namespace Aimtec.SDK.Orbwalking
                 .OfType<Obj_AI_Base>().Where(x => this.CanKillMinion(x));
 
             var bestMinionTarget = availableMinionTargets
-                .OrderByDescending(x => x.MaxHealth).ThenBy(x => this.HealthPred.GetAggroData(x)?.HasTurretAggro)
+                .OrderByDescending(x => x.MaxHealth)
                 .ThenBy(x => x.Health).FirstOrDefault();
 
             return bestMinionTarget;
@@ -640,7 +566,7 @@ namespace Aimtec.SDK.Orbwalking
         int GetPredictedHealth(Obj_AI_Base minion, int time = 0)
         {
             var rtime = time == 0 ? this.TimeForAutoToReachTarget(minion) : time;
-            return (int) Math.Ceiling(this.HealthPred.GetPrediction(minion, rtime));
+            return (int) Math.Ceiling(HealthPrediction.Implementation.GetPrediction(minion, rtime));
         }
 
         //Gets a structure target based on the following order (Nexus, Turret, Inihibitor)
@@ -674,8 +600,6 @@ namespace Aimtec.SDK.Orbwalking
 
         private void Initialize()
         {
-            this.HealthPred = (HealthPredictionImplB) HealthPrediction.Implementation;
-
             this.Config = new Menu("Orbwalker", "Orbwalker")
             {
                 new Menu("Advanced", "Advanced")
@@ -782,11 +706,20 @@ namespace Aimtec.SDK.Orbwalking
 
         bool ShouldWaitMinion(Obj_AI_Base minion)
         {
-            var pred = this.GetPredictedHealth(
-                minion,
-                this.TimeForAutoToReachTarget(minion) + (int) this.AttackCoolDownTime + (int) this.WindUpTime);
-            return Player.GetAutoAttackDamage(minion) - pred >= 0;
+            var time = this.TimeForAutoToReachTarget(minion) + (int)this.AttackCoolDownTime + (int)this.WindUpTime;
+
+            var pred = HealthPrediction.Implementation.GetLaneClearHealthPrediction(minion, (int) (Player.AttackDelay * 1000 * 2));
+
+            var dmg = Player.GetAutoAttackDamage(minion);
+
+            if (pred < dmg)
+            {
+                return true;
+            }
+
+            return false;
         }
+
 
         private void SpellBook_OnStopCast(Obj_AI_Base sender, SpellBookStopCastEventArgs e)
         {
