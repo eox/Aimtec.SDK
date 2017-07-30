@@ -26,7 +26,7 @@ namespace Aimtec.SDK.Prediction.Health
 
             Config = new Menu.Menu("HealthPred", "HealthPrediction");
             Config.Add(new MenuSeperator("seperator", "Default value is 25"));
-            Config.Add(new MenuSlider("ExtraDelay", "Extra Delay", 25, 0, 250));
+            Config.Add(new MenuSlider("ExtraDelay2", "Extra Delay", 25, 0, 250));
 
             AimtecMenu.Instance.Add(this.Config);
         }
@@ -89,7 +89,7 @@ namespace Aimtec.SDK.Prediction.Health
                         continue;
                     }
 
-                    if (k.META + this.Config["ExtraDelay"].Value < time)
+                    if (k.META + this.Config["ExtraDelay2"].Value < time)
                     {
                         predictedDamage += (float) k.Damage;
                     }
